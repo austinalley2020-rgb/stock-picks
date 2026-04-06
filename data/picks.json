@@ -1,0 +1,34 @@
+{
+    "ideas": [
+        {
+            "ticker": "UPST",
+            "direction": "Long",
+            "thesis": "Undervalued growth story; improving unit economics",
+            "date": "Apr 22"
+        },
+        {
+            "ticker": "RIVN",
+            "direction": "Short",
+            "thesis": "Overcapacity + margin compression ahead",
+            "date": "Apr 18"
+        },
+        {
+            "ticker": "MSFT",
+            "direction": "Long",
+            "thesis": "Cloud momentum underappreciated beyond AI hype",
+            "date": "Apr 12"
+        },
+        {
+            "ticker": "CVNA",
+            "direction": "Short",
+            "thesis": "Weak consumer credit trends; structural risk",
+            "date": "Apr 05"
+        },
+        {
+            "ticker": "ASML",
+            "direction": "Long",
+            "thesis": "Essential exposure to secular tech capex cycle",
+            "date": "Mar 28"
+        }
+    ]
+}
