@@ -1,0 +1,29 @@
+{
+  "name": "Call Calendar Spread (example)",
+  "underlying": "EXAMPLE",
+  "as_of": "2026-07-31",
+  "rate": 0.045,
+  "dividend_yield": 0.0,
+  "notes": "Long back-month call, short front-month call, same strike. Filled at a debit inside the ask — net_cash is the actual dollars paid (negative = debit).",
+  "net_cash": -85.0,
+  "legs": [
+    {
+      "option_type": "call",
+      "strike": 100,
+      "expiry": "2026-08-21",
+      "quantity": -1,
+      "premium": 2.40,
+      "iv": 0.32,
+      "label": "short front 100 call"
+    },
+    {
+      "option_type": "call",
+      "strike": 100,
+      "expiry": "2026-09-18",
+      "quantity": 1,
+      "premium": 3.55,
+      "iv": 0.30,
+      "label": "long back 100 call"
+    }
+  ]
+}
