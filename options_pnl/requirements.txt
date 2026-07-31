@@ -2,4 +2,6 @@ numpy>=1.26
 scipy>=1.11
 plotly>=5.18
 streamlit>=1.32
+ib_insync>=0.9.86
+eventkit>=1.0.3
 pytest>=8.0

@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 import streamlit as st
 
 from options_pnl.io import load_position
-from options_pnl.pnl import analyze_position, pnl_curve, pnl_surface
+from options_pnl.pnl import analyze_position, pnl_surface
 from options_pnl.position import OptionLeg, Position
 
 st.set_page_config(
@@ -141,13 +141,139 @@ def default_calendar() -> Position:
     return load_position(example)
 
 
+def _load_from_ibkr_sidebar() -> tuple[Position, float] | None:
+    """Sidebar controls for TWS / IB Gateway import. Returns None until connected."""
+    from options_pnl.ibkr.client import IbkrConfig, IbkrConnectionError, connect, disconnect
+    from options_pnl.ibkr.positions import fetch_option_books
+
+    st.sidebar.markdown("**IBKR TWS / Gateway**")
+    st.sidebar.caption(
+        "TWS or IB Gateway must be running on this machine with API sockets enabled. "
+        "See options_pnl/IBKR_SETUP.md"
+    )
+    host = st.sidebar.text_input("Host", value="127.0.0.1")
+    port = st.sidebar.selectbox(
+        "Port",
+        options=[7497, 7496, 4002, 4001],
+        format_func=lambda p: {
+            7497: "7497 — TWS paper",
+            7496: "7496 — TWS live",
+            4002: "4002 — Gateway paper",
+            4001: "4001 — Gateway live",
+        }[p],
+        index=0,
+    )
+    client_id = st.sidebar.number_input("Client ID", min_value=1, value=77, step=1)
+    account = st.sidebar.text_input("Account (optional)", value="", help="e.g. DU1234567")
+    fetch_iv = st.sidebar.checkbox("Fetch IV / spot (market data)", value=True)
+    underlying_filter = st.sidebar.text_input(
+        "Underlying filter (optional)",
+        value="",
+        help="Leave blank to load all underlyings with option positions",
+    ).strip().upper()
+
+    if st.sidebar.button("Connect & load from IBKR", type="primary"):
+        cfg = IbkrConfig(
+            host=host,
+            port=int(port),
+            client_id=int(client_id),
+            account=account or None,
+            readonly=True,
+        )
+        ib = None
+        try:
+            with st.spinner(f"Connecting to {host}:{port}…"):
+                ib = connect(cfg)
+                books, spots = fetch_option_books(
+                    ib,
+                    underlying=underlying_filter or None,
+                    config=cfg,
+                    fetch_iv=fetch_iv,
+                    fetch_spot=fetch_iv,
+                )
+            st.session_state["ibkr_books"] = books
+            st.session_state["ibkr_spots"] = spots
+            st.session_state["ibkr_error"] = None
+            st.sidebar.success(f"Loaded {len(books)} underlying book(s).")
+        except IbkrConnectionError as exc:
+            st.session_state["ibkr_error"] = str(exc)
+            st.sidebar.error("IBKR connection failed — see error below.")
+        except Exception as exc:  # noqa: BLE001 — surface any IB client surprise
+            st.session_state["ibkr_error"] = f"{type(exc).__name__}: {exc}"
+            st.sidebar.error("IBKR load failed — see error below.")
+        finally:
+            disconnect(ib)
+
+    if st.session_state.get("ibkr_error"):
+        st.sidebar.warning(st.session_state["ibkr_error"])
+
+    books = st.session_state.get("ibkr_books") or []
+    spots = st.session_state.get("ibkr_spots") or {}
+    if not books:
+        st.sidebar.info("Not loaded yet. Start TWS, then click Connect.")
+        return None
+
+    names = [b.underlying or b.name for b in books]
+    choice = st.sidebar.selectbox("Underlying book", names)
+    pos = next(b for b in books if (b.underlying or b.name) == choice)
+
+    default_spot = float(spots.get(pos.underlying, 0.0) or 0.0)
+    if default_spot <= 0 and pos.legs:
+        default_spot = float(np.mean([leg.strike for leg in pos.legs]))
+    spot = st.sidebar.number_input(
+        "Underlying spot",
+        min_value=0.01,
+        value=float(default_spot or 100.0),
+        step=0.5,
+        key="ibkr_spot",
+    )
+
+    # Allow manual override of net debit while keeping IBKR legs
+    use_override = st.sidebar.checkbox("Override IBKR net cash with debit $", value=False)
+    if use_override:
+        debit = st.sidebar.number_input(
+            "Actual net debit paid ($)",
+            min_value=0.0,
+            value=float(pos.net_debit),
+            step=5.0,
+        )
+        pos.net_cash = -abs(debit)
+    else:
+        st.sidebar.caption(f"Using IBKR avgCost net cash: ${pos.open_cash:,.2f}")
+
+    # Optional IV fill for legs missing market data
+    for i, leg in enumerate(pos.legs):
+        if leg.iv is None:
+            leg.iv = st.sidebar.number_input(
+                f"IV for {leg.label}",
+                min_value=0.01,
+                max_value=3.0,
+                value=0.30,
+                step=0.01,
+                key=f"ibkr_iv_{i}",
+            )
+    return pos, float(spot)
+
+
 def build_position_from_ui() -> tuple[Position, float]:
     st.sidebar.header("Position")
     source = st.sidebar.radio(
         "Input source",
-        ["Example call calendar", "Edit legs", "Paste JSON"],
+        ["Load from IBKR", "Example call calendar", "Edit legs", "Paste JSON"],
         index=0,
     )
+
+    if source == "Load from IBKR":
+        loaded = _load_from_ibkr_sidebar()
+        if loaded is not None:
+            return loaded
+        # Fallback demo until IBKR connects so the page still renders
+        st.sidebar.caption("Showing example calendar until IBKR connects.")
+        pos = default_calendar()
+        spot = st.sidebar.number_input(
+            "Underlying spot (example)", min_value=0.01, value=100.0, step=0.5, key="ex_spot_pending"
+        )
+        return pos, float(spot)
 
     spot = st.sidebar.number_input("Underlying spot", min_value=0.01, value=100.0, step=0.5)
 
@@ -353,8 +479,8 @@ def main() -> None:
           <p class="brand">Options P&L Lab</p>
           <p class="brand-sub">
             Interactive multi-leg P&amp;L, breakevens, and greeks — including calendar spreads
-            where the back-month still has time value at front expiry. Uses your actual fill debit,
-            not the broker ask.
+            where the back-month still has time value at front expiry. Load fills from IBKR
+            (avgCost) or paste legs; never rely on the broker ask.
           </p>
         </div>
         """,
@@ -406,7 +532,7 @@ def main() -> None:
     tab1, tab2, tab3, tab4 = st.tabs(["P&L curves", "Heatmap", "Legs & greeks", "Export"])
 
     with tab1:
-        st.plotly_chart(plot_pnl_curves(analysis, spot), use_container_width=True)
+        st.plotly_chart(plot_pnl_curves(analysis, spot), width="stretch")
         cols = st.columns(len(analysis.curves))
         for col, curve in zip(cols, analysis.curves):
             with col:
@@ -422,7 +548,7 @@ def main() -> None:
         if base_iv is None and position.legs:
             ivs = [leg.iv for leg in position.legs if leg.iv is not None]
             base_iv = float(np.mean(ivs)) if ivs else 0.3
-        st.plotly_chart(plot_surface(position, spot, mode, base_iv), use_container_width=True)
+        st.plotly_chart(plot_surface(position, spot, mode, base_iv), width="stretch")
         st.caption(
             "Calendars are typically long vega / short theta into front expiry. "
             "The time surface shows how the P&L shape evolves as the front leg decays."
@@ -450,9 +576,9 @@ def main() -> None:
                         "ν": round(row["greeks"]["vega"], 2),
                     }
                 )
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width="stretch", hide_index=True)
         with right:
-            st.plotly_chart(plot_greeks_bars(g), use_container_width=True)
+            st.plotly_chart(plot_greeks_bars(g), width="stretch")
 
         # Front-expiry explanation card
         if analysis.nearest_expiry and len({leg.expiry for leg in position.legs}) > 1:

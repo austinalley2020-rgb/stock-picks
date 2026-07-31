@@ -18,6 +18,16 @@ pip install -r options_pnl/requirements.txt
 streamlit run options_pnl/app.py
 ```
 
+### IBKR users (recommended)
+
+If your book is in Interactive Brokers, import fills via the **TWS / IB Gateway API** instead of typing legs:
+
+1. Follow **[IBKR_SETUP.md](./IBKR_SETUP.md)** (enable API sockets in TWS).
+2. In the app sidebar choose **Load from IBKR** → Connect.
+3. Or CLI: `python -m options_pnl.fetch_ibkr --underlying TICKER`
+
+`avgCost` from IBKR becomes `net_cash`, so calendar breakevens use **your fill**, not the ask.
+
 Or from Python:
 
 ```python
@@ -90,4 +100,4 @@ pytest options_pnl/tests -q
 
 Already covered: European BS marks, multi-leg + stock, calendars, actual net debit, greeks, breakeven finder, interactive Streamlit.
 
-Natural follow-ons: IBKR Flex/API import, American early-exercise adjustment, vol smile by strike/expiry, live quote refresh, scenario tables for earnings IV crush.
+Natural follow-ons: American early-exercise adjustment, vol smile by strike/expiry, combo BAG decomposition, Flex end-of-day snapshots, earnings IV-crush scenarios.
